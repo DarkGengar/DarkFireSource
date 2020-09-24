@@ -19,9 +19,9 @@
 #include "menu.h"
 #include "overworld.h"
 #include "palette.h"
-#include "pokemon_jump.h"
+#include "minigame_countdown.h"
 #include "random.h"
-#include "rom_8034C54.h"
+#include "digit_obj_util.h"
 #include "save.h"
 #include "scanline_effect.h"
 #include "script.h"
@@ -146,38 +146,49 @@ struct BerryCrushGame
 {
     MainCallback unk0;
     u32 (* unk4)(struct BerryCrushGame *, u8 *);
+
     u8 unk8;
     u8 unk9;
     u8 unkA;
     u8 unkB;
+
     u8 unkC;
     u8 unkD;
+
     u8 unkE;
     u8 unkF;
+
     u16 unk10;
     u16 unk12;
     u16 unk14;
+
     u16 unk16;
     s16 unk18;
     s16 unk1A;
-    int unk1C;
+    s32 unk1C;
     s32 unk20;
     u8 unk24;
+
     u8 unk25_0:1;
     u8 unk25_1:1;
     u8 unk25_2:1;
     u8 unk25_3:1;
     u8 unk25_4:1;
     u8 unk25_5:3;
+
     u16 unk26;
+
     u16 unk28;
     s16 unk2A;
     s16 unk2C;
+
     s16 unk2E;
     s16 unk30;
     s16 unk32;
     s16 unk34;
+
     u8 unk36[0xA];
+
     struct BerryCrushGame_40 unk40;
     struct BerryCrushGame_5C unk5C;
     union BerryCrushGame_68 unk68;
@@ -193,7 +204,7 @@ static void sub_8020F88(void);
 static void sub_8020FA0(u8);
 void sub_8020FC4(struct BerryCrushGame *);
 void sub_8022BEC(u16, u8, u8 *);
-void sub_8024604(u8 *, u32, s32, u32, u32, u32, u32);
+static void BerryCrush_SetPaletteFadeParams(u8 *, bool8, u32, s8, u8, u8, u16);
 static int sub_8021450(struct BerryCrushGame *);
 void sub_8022588(struct BerryCrushGame *);
 void sub_8022600(struct BerryCrushGame *);
@@ -204,9 +215,9 @@ void sub_8022524(struct BerryCrushGame_138 *, u16);
 void sub_8022B28(struct Sprite *);
 void sub_8022554(struct BerryCrushGame_138 *r0);
 void sub_8024578(struct BerryCrushGame *);
-void sub_8024644(u8 *, u32, u32, u32, u32);
+void sub_8024644(u8 *, u8, u8, u16, u8);
 static void sub_8022A20(struct Sprite *sprite);
-static u32 sub_8022C58(struct BerryCrushGame *r6, u8 *r1);
+static u32 BerryCrushCommand_BeginNormalPaletteFade(struct BerryCrushGame *r6, u8 *r1);
 static u32 sub_8022CB0(struct BerryCrushGame *r4, u8 *r5);
 static u32 sub_8022D14(struct BerryCrushGame *r7, u8 *r5);
 static u32 sub_8022E1C(struct BerryCrushGame *r4, __attribute__((unused)) u8 *r1);
@@ -322,7 +333,7 @@ static const u8 sBerryCrushTextColorTable[][3] =
 };
 
 
-static const struct WindowTemplate gUnknown_082F32EC =
+static const struct WindowTemplate sWindowTemplate_BerryCrushRankings =
 {
     .bg = 0, 
     .tilemapLeft = 3, 
@@ -421,7 +432,7 @@ static const u8 gUnknown_082F3344[][4] =
     {12, 14, 15, 16},
 };
 
-static const u32 gUnknown_082F334C[] = 
+static const u32 sPressingSpeedConversionTable[] = 
 {
     50000000 / (1 << 0), 
     50000000 / (1 << 1), 
@@ -714,14 +725,14 @@ static const struct SpriteTemplate gUnknown_082F436C =
     .callback = SpriteCallbackDummy
 };
 
-static const struct UnkStruct3 gUnknown_082F4384[] = 
+static const struct DigitObjUtilTemplate gUnknown_082F4384[] = 
 {
     {
-        .field_0_0 = 1,
+        .strConvMode = 1,
         .shape = 2,
         .size = 0,
         .priority = 0,
-        .field_1 = 2, 
+        .oamCount = 2, 
         .xDelta = 8, 
         .x = 156,
         .y = 0,
@@ -729,11 +740,11 @@ static const struct UnkStruct3 gUnknown_082F4384[] =
         .spritePal = gUnknown_082F422C,
     },
     {
-        .field_0_0 = 0,
+        .strConvMode = 0,
         .shape = 2,
         .size = 0,
         .priority = 0,
-        .field_1 = 2, 
+        .oamCount = 2, 
         .xDelta = 8, 
         .x = 180,
         .y = 0,
@@ -741,11 +752,11 @@ static const struct UnkStruct3 gUnknown_082F4384[] =
         .spritePal = gUnknown_082F422C,
     },
     {
-        .field_0_0 = 0,
+        .strConvMode = 0,
         .shape = 2,
         .size = 0,
         .priority = 0,
-        .field_1 = 2, 
+        .oamCount = 2, 
         .xDelta = 8, 
         .x = 204,
         .y = 0,
@@ -767,7 +778,7 @@ static const u8 *const gUnknown_082F43B4[] =
 static u32 (*const gUnknown_082F43CC[])(struct BerryCrushGame *, u8 *) =
 {
     NULL,
-    sub_8022C58,
+    BerryCrushCommand_BeginNormalPaletteFade,
     sub_8022CB0,
     sub_8022D14,
     sub_8022E1C,
@@ -825,14 +836,14 @@ u32 sub_8020C0C(MainCallback callback)
     if (callback == CB2_ReturnToField)
     {
         gTextFlags.autoScroll = TRUE;
-        PlayNewMapMusic(MUS_POKECEN);
+        PlayNewMapMusic(MUS_POKE_CENTER);
         SetMainCallback1(CB1_Overworld);
     }
 
     return 0;
 }
 
-void sub_8020C70(MainCallback callback)
+void StartBerryCrush(MainCallback callback)
 {
     u8 playerCount = 0;
     u8 multiplayerId;
@@ -842,7 +853,7 @@ void sub_8020C70(MainCallback callback)
         SetMainCallback2(callback);
         Rfu.unk_10 = 0;
         Rfu.unk_12 = 0;
-        Rfu.unk_ee = 1;
+        Rfu.errorState = 1;
         return;
     }
 
@@ -853,7 +864,7 @@ void sub_8020C70(MainCallback callback)
         SetMainCallback2(callback);
         Rfu.unk_10 = 0;
         Rfu.unk_12 = 0;
-        Rfu.unk_ee = 1;
+        Rfu.errorState = 1;
         return;
     }
 
@@ -863,7 +874,7 @@ void sub_8020C70(MainCallback callback)
         SetMainCallback2(callback);
         Rfu.unk_10 = 0;
         Rfu.unk_12 = 0;
-        Rfu.unk_ee = 1;
+        Rfu.errorState = 1;
         return;
     }
 
@@ -874,7 +885,7 @@ void sub_8020C70(MainCallback callback)
     gUnknown_02022C90->unk12 = 1;
     gUnknown_02022C90->unkE = 1;
     gUnknown_02022C90->unkF = 6;
-    sub_8024604(gUnknown_02022C90->unk36, 1, -1, 0, 16, 0, 0);
+    BerryCrush_SetPaletteFadeParams(gUnknown_02022C90->unk36, 1, -1, 0, 16, 0, 0);
     sub_8022BEC(4, 1, gUnknown_02022C90->unk36);
     SetMainCallback2(sub_8020F88);
     gUnknown_02022C90->unkA = CreateTask(sub_8020FA0, 8);
@@ -891,7 +902,7 @@ static void sub_8020D8C(void)
     gUnknown_02022C90->unk68.as_four_players.others[gUnknown_02022C90->unk8].unk0 = gSpecialVar_ItemId - FIRST_BERRY_INDEX;
     gUnknown_02022C90->unkE = 1;
     gUnknown_02022C90->unkF = 9;
-    sub_8024604(gUnknown_02022C90->unk36, 0, -1, 0, 16, 0, 0);
+    BerryCrush_SetPaletteFadeParams(gUnknown_02022C90->unk36, 0, -1, 0, 16, 0, 0);
     sub_8022BEC(4, 1, gUnknown_02022C90->unk36);
     gUnknown_02022C90->unkA = CreateTask(sub_8020FA0, 8);
     SetMainCallback2(sub_8020F88);
@@ -900,7 +911,7 @@ static void sub_8020D8C(void)
 void sub_8020E1C(void)
 {
     DestroyTask(gUnknown_02022C90->unkA);
-    ChooseBerrySetCallback(sub_8020D8C);
+    ChooseBerryForMachine(sub_8020D8C);
 }
 
 static void sub_8020E3C(void)
@@ -918,11 +929,11 @@ void sub_8020E58(void)
     u32 var0, var1;
 
     var0 = gUnknown_02022C90->unk68.as_four_players.unk00.unk04;
-    var0 <<= 8;
-    var0 = sub_81515FC(var0, 60 << 8);
+    var0 = Q_24_8(var0);
+    var0 = MathUtil_Div32(var0, Q_24_8(60));
     var1 = gUnknown_02022C90->unk68.as_four_players.unk00.unk0A;
-    var1 <<= 8;
-    var1 = sub_81515FC(var1, var0) & 0xFFFF;
+    var1 = Q_24_8(var1);
+    var1 = MathUtil_Div32(var1, var0) & 0xFFFF;
     gUnknown_02022C90->unk16 = var1;
     switch (gUnknown_02022C90->unk9)
     {
@@ -1031,12 +1042,12 @@ int sub_802104C(void)
         SetHBlankCallback(NULL);
         SetGpuReg(REG_OFFSET_DISPCNT, 0);
         ScanlineEffect_Stop();
-        reset_temp_tile_data_buffers();
+        ResetTempTileDataBuffers();
         break;
     case 1:
         CpuFill16(0, (void *)OAM, OAM_SIZE);
         gReservedSpritePaletteCount = 0;
-        sub_8034C54(3);
+        DigitObjUtil_Init(3);
         break;
     case 2:
         ResetPaletteFade();
@@ -1069,14 +1080,14 @@ int sub_802104C(void)
         CopyBgTilemapBufferToVram(1);
         CopyBgTilemapBufferToVram(2);
         CopyBgTilemapBufferToVram(3);
-        decompress_and_copy_tile_data_to_vram(1, gUnknown_08DE34B8, 0, 0, 0);
+        DecompressAndCopyTileDataToVram(1, gUnknown_08DE34B8, 0, 0, 0);
         break;
     case 6:
-        if (free_temp_tile_data_buffers_if_possible())
+        if (FreeTempTileDataBuffersIfPossible())
             return 0;
 
         InitStandardTextBoxWindows();
-        sub_8197200();
+        InitTextBoxGfxAndPrinters();
         sub_8022588(var0);
         sub_8022600(var0);
         gPaletteFade.bufferTransferDisabled = TRUE;
@@ -1125,7 +1136,7 @@ int sub_802130C(void)
     switch (var0->unkC)
     {
     case 0:
-        sub_8010434();
+        Rfu_SetLinkStandbyCallback();
         break;
     case 1:
         if (!IsLinkTaskFinished())
@@ -1165,7 +1176,7 @@ int sub_802130C(void)
     case 6:
         DestroyWirelessStatusIndicatorSprite();
         sub_8022960(var0);
-        sub_8034CC8();
+        DigitObjUtil_Free();
         break;
     case 7:
         var0->unkC = 0;
@@ -1232,12 +1243,12 @@ void sub_80214A8(struct BerryCrushGame *arg0, struct BerryCrushGame_138 *arg1)
         var0 *= 128;
         var6 = var5 + 32;
         var6 = var6 / 2;
-        var1 = sub_81515D4(7, 0x3F80, var6);
+        var1 = MathUtil_Div16Shift(7, Q_8_8(63.5), var6);
         data[0] = (u16)arg1->unk38[i]->pos1.x * 128;
-        data[3] = sub_81515D4(7, var0, var1);
-        var1 = sub_8151550(7, var1, 85);
+        data[3] = MathUtil_Div16Shift(7, var0, var1);
+        var1 = MathUtil_Mul16Shift(7, var1, 85);
         data[4] = 0;
-        data[5] = sub_81515D4(7, 0x3F80, var1);
+        data[5] = MathUtil_Div16Shift(7, Q_8_8(63.5), var1);
         data[7] |= 0x8000;
         if (arg1->unkC[i]->unk8 < 0)
             StartSpriteAffineAnim(arg1->unk38[i], 1);
@@ -1344,9 +1355,9 @@ void sub_80216E0(struct BerryCrushGame *arg0, struct BerryCrushGame_138 *arg1)
         else
         {
             if (sp4 == 1)
-                PlaySE(SE_TOY_DANGO);
+                PlaySE(SE_MUD_BALL);
             else
-                PlaySE(SE_TOY_KABE);
+                PlaySE(SE_BREAKABLE_DOOR);
 
             arg0->unk25_2 = 1;
         }
@@ -1383,12 +1394,12 @@ void sub_8021944(struct BerryCrushGame_138 *arg0, u16 arg1)
 
     arg0->unk4 = arg1 / 3600;
     arg0->unk6 = (arg1 % 3600) / 60;
-    r3 = sub_8151534((arg1 % 60) << 8, 4);
+    r3 = MathUtil_Mul16(Q_8_8(arg1 % 60), 4);
 
     for (i = 0; i < 8; i++)
     {
         if ((r3 >> (7 - i)) & 1)
-            r7 += gUnknown_082F334C[i];
+            r7 += sPressingSpeedConversionTable[i];
     }
 
     arg0->unk8 = r7 / 1000000;
@@ -1400,495 +1411,75 @@ void sub_80219C8(u8 windowId, u8 left, u8 colorId, const u8 *string)
     AddTextPrinterParameterized3(windowId, 2, left, 0, sBerryCrushTextColorTable[colorId], 0, string);
 }
 
-#ifdef NONMATCHING
-void sub_8021A28(struct BerryCrushGame *sp0C, u8 sp10, u8 sp14, u8 r3)
+void sub_8021A28(struct BerryCrushGame * sp0C, u8 sp10, u8 sp14, u8 sp18)
 {
-    s32 r6;
-    u8 i, j;
-    u8 sp18 = 0;
+    u8 r8;
     u8 sp1C = 0;
-    union BerryCrushGame_68 *sp20 = &sp0C->unk68;
+    u8 sp20 = 0;
+    u8 r2;
+    s32 r3;
+    u8 r7;
+    union BerryCrushGame_68 * sp24 = &sp0C->unk68;
     u32 xOffset;
-    u32 r8, r9, r4, r7, r3_;
-    u8 r10, r2;    
+    s32 r6;
 
-    r3 -= 16;
+    sp18 -= 16;
     if (sp10 == 2)
-        r3 -= 42;
-    r6 = r3 - 14 * sp0C->unk9;
+        sp18 -= 42;
+    r6 = sp18 - 14 * sp0C->unk9;
     if (r6 > 0)
         r6 = r6 / 2 + 16;
     else
         r6 = 16;
-    i = 0;
-    while (i < sp0C->unk9)
+
+    for (r8 = 0; r8 < sp0C->unk9; r6 += 14, ++r8)
     {
         DynamicPlaceholderTextUtil_Reset();
         switch (sp10)
         {
-        default: // how can you write this twice??????
-            r4 = sp14 - 4;
-            r10 = r6;
-            r9 = sp1C + 0xA2;
-            r8 = sp18;
-            r6 += 14;
-            ++i;
-            break;
         case 0:
-            sp18 = sp20->as_five_players.unk1C[0].unk4.as_2d_bytes[0][i];
-            if (i != 0 && sp20->as_four_players.unk00.unk0C[0][i] != sp20->as_four_players.unk00.unk0C[0][i - 1])
-                sp1C = i;
-            ConvertIntToDecimalStringN(
-                gStringVar4,
-                sp20->as_four_players.unk00.unk0C[sp10][i],
-                STR_CONV_MODE_RIGHT_ALIGN,
-                4
-            );
+            sp1C = sp24->as_five_players.unk1C[0].unk4.as_2d_bytes[sp10][r8];
+            if (r8 != 0 && sp24->as_four_players.unk00.unk0C[sp10][r8] != sp24->as_four_players.unk00.unk0C[sp10][r8 - 1])
+                sp20 = r8;
+            ConvertIntToDecimalStringN(gStringVar4, sp24->as_four_players.unk00.unk0C[sp10][r8], STR_CONV_MODE_RIGHT_ALIGN, 4);
             StringAppend(gStringVar4, gUnknown_082F43B4[sp10]);
-            r4 = sp14 - 4;
-            r10 = r6;
-            r9 = sp1C + 0xA2;
-            r8 = sp18;
-            r6 += 14;
-            ++i;
             break;
         case 1:
-            sp18 = sp20->as_five_players.unk1C[0].unk4.as_2d_bytes[1][i];
-            if (i != 0 && sp20->as_four_players.unk00.unk0C[1][i] != sp20->as_four_players.unk00.unk0C[1][i - 1])
-                sp1C = i;
-            ConvertIntToDecimalStringN(
-                gStringVar1,
-                sp20->as_four_players.unk00.unk0C[sp10][i] >> 4,
-                STR_CONV_MODE_RIGHT_ALIGN,
-                3
-            );
-            j = 0;
-            r3_ = 15 & (u8)sp20->as_four_players.unk00.unk0C[sp10][i];
-            r4 = sp14 - 4;
-            r10 = r6;
-            r9 = sp1C + 0xA2;
-            r8 = sp18;
-            r6 += 14;
-            ++i;
-            for (; j < 4; ++j)
-                if (((r3_ >> (3 - j)) & 1) != 0) // why does it load constant 1 into r10? 
-                    r7 += gUnknown_082F334C[j];
-            ConvertIntToDecimalStringN(
-                gStringVar2,
-                (u8)(r7 / 1000000),
-                STR_CONV_MODE_LEADING_ZEROS,
-                2
-            );
-            StringExpandPlaceholders(gStringVar4, gText_XDotY);
+            sp1C = sp24->as_five_players.unk1C[0].unk4.as_2d_bytes[sp10][r8];
+            if (r8 != 0 && sp24->as_four_players.unk00.unk0C[sp10][r8] != sp24->as_four_players.unk00.unk0C[sp10][r8 - 1])
+                sp20 = r8;
+            ConvertIntToDecimalStringN(gStringVar1, sp24->as_four_players.unk00.unk0C[sp10][r8] >> 4, STR_CONV_MODE_RIGHT_ALIGN, 3);
+            r3 = 0;
+            r7 = sp24->as_four_players.unk00.unk0C[sp10][r8] & 15;
+            for (r2 = 0; r2 < 4; ++r2)
+                if ((r7 >> (3 - r2)) & 1)
+                    r3 += sPressingSpeedConversionTable[r2];
+            r7 = r3 / 1000000u;
+            ConvertIntToDecimalStringN(gStringVar2, r7, STR_CONV_MODE_LEADING_ZEROS, 2);
+            StringExpandPlaceholders(gStringVar4, gUnknown_082F43B4[sp10]);
             break;
         case 2:
-            sp18 = i;
-            sp1C = i;
-            r2 = sp0C->unk68.as_four_players.others[i].unk0;
-            if (r2 > 43)
+            sp1C = r8;
+            sp20 = r8;
+            r2 = sp0C->unk68.as_five_players.unk1C[r8].unk14[12];
+            if (r2 >= LAST_BERRY_INDEX - FIRST_BERRY_INDEX + 2)
                 r2 = 0;
-            StringCopy(gStringVar1,gBerries[r2].name);
-            StringExpandPlaceholders(gStringVar4, gText_Var1Berry);
-            r4 = sp14 - 4;
-            r10 = r6;
-            r9 = sp1C + 0xA2;
-            r8 = i;
-            r6 += 14;
-            ++i;
+            StringCopy(gStringVar1, gBerries[r2].name);
+            StringExpandPlaceholders(gStringVar4, gUnknown_082F43B4[2]);
             break;
         }
-        xOffset = GetStringRightAlignXOffset(2, gStringVar4, r4);
-        AddTextPrinterParameterized3(
-            sp0C->unk138.unk82,
-            2,
-            xOffset,
-            r10,
-            sBerryCrushTextColorTable[0],
-            0,
-            gStringVar4
-        );
-        if (sp18 == sp0C->unk8)
+        xOffset = GetStringRightAlignXOffset(2, gStringVar4, sp14 - 4);
+        AddTextPrinterParameterized3(sp0C->unk138.unk82, 2, xOffset, r6, sBerryCrushTextColorTable[0], 0, gStringVar4);
+        if (sp1C == sp0C->unk8)
             StringCopy(gStringVar3, gText_1DotBlueF700);
         else
             StringCopy(gStringVar3, gText_1DotF700);
-        gStringVar3[0] = r9;
-        DynamicPlaceholderTextUtil_SetPlaceholderPtr(0, PLAYER_UNK14(sp0C, r8));
+        gStringVar3[0] = sp20 + CHAR_1;
+        DynamicPlaceholderTextUtil_SetPlaceholderPtr(0, PLAYER_UNK14(sp0C, sp1C));
         DynamicPlaceholderTextUtil_ExpandPlaceholders(gStringVar4, gStringVar3);
-        AddTextPrinterParameterized3(
-            sp0C->unk138.unk82,
-            2,
-            4,
-            r10,
-            sBerryCrushTextColorTable[0],
-            0,
-            gStringVar4
-        );
+        AddTextPrinterParameterized3(sp0C->unk138.unk82, 2, 4, r6, sBerryCrushTextColorTable[0], 0, gStringVar4);
     }
 }
-#else
-NAKED
-void sub_8021A28(struct BerryCrushGame *sp0C, u8 sp10, u8 sp14, u8 r3)
-{
-    asm_unified("\n\
-        push {r4-r7,lr}\n\
-        mov r7, r10\n\
-        mov r6, r9\n\
-        mov r5, r8\n\
-        push {r5-r7}\n\
-        sub sp, 0x2C\n\
-        str r0, [sp, 0xC]\n\
-        lsls r1, 24\n\
-        lsrs r1, 24\n\
-        str r1, [sp, 0x10]\n\
-        lsls r2, 24\n\
-        lsrs r2, 24\n\
-        str r2, [sp, 0x14]\n\
-        lsls r3, 24\n\
-        movs r0, 0\n\
-        str r0, [sp, 0x18]\n\
-        movs r1, 0\n\
-        str r1, [sp, 0x1C]\n\
-        ldr r2, [sp, 0xC]\n\
-        adds r2, 0x68\n\
-        str r2, [sp, 0x20]\n\
-        movs r4, 0xF0\n\
-        lsls r4, 24\n\
-        adds r3, r4\n\
-        lsrs r3, 24\n\
-        ldr r0, [sp, 0x10]\n\
-        cmp r0, 0x2\n\
-        bne _08021A68\n\
-        adds r0, r3, 0\n\
-        subs r0, 0x2A\n\
-        lsls r0, 24\n\
-        lsrs r3, r0, 24\n\
-    _08021A68:\n\
-        ldr r2, [sp, 0xC]\n\
-        ldrb r1, [r2, 0x9]\n\
-        lsls r0, r1, 3\n\
-        subs r0, r1\n\
-        lsls r0, 1\n\
-        subs r6, r3, r0\n\
-        cmp r6, 0\n\
-        ble _08021A84\n\
-        lsrs r0, r6, 31\n\
-        adds r0, r6, r0\n\
-        asrs r0, 1\n\
-        adds r6, r0, 0\n\
-        adds r6, 0x10\n\
-        b _08021A86\n\
-    _08021A84:\n\
-        movs r6, 0x10\n\
-    _08021A86:\n\
-        movs r5, 0\n\
-        ldr r3, [sp, 0xC]\n\
-        ldrb r3, [r3, 0x9]\n\
-        cmp r5, r3\n\
-        bcc _08021A92\n\
-        b _08021D14\n\
-    _08021A92:\n\
-        ldr r4, [sp, 0x10]\n\
-        lsls r4, 2\n\
-        str r4, [sp, 0x24]\n\
-    _08021A98:\n\
-        bl DynamicPlaceholderTextUtil_Reset\n\
-        ldr r0, [sp, 0x10]\n\
-        cmp r0, 0x1\n\
-        beq _08021B48\n\
-        cmp r0, 0x1\n\
-        bgt _08021AC0\n\
-        cmp r0, 0\n\
-        beq _08021ADE\n\
-        ldr r4, [sp, 0x14]\n\
-        subs r4, 0x4\n\
-        lsls r1, r6, 24\n\
-        mov r10, r1\n\
-        ldr r2, [sp, 0x1C]\n\
-        adds r2, 0xA2\n\
-        mov r9, r2\n\
-        ldr r3, [sp, 0x18]\n\
-        lsls r3, 5\n\
-        mov r8, r3\n\
-        b _08021C5A\n\
-    _08021AC0:\n\
-        ldr r4, [sp, 0x10]\n\
-        cmp r4, 0x2\n\
-        bne _08021AC8\n\
-        b _08021C1C\n\
-    _08021AC8:\n\
-        ldr r4, [sp, 0x14]\n\
-        subs r4, 0x4\n\
-        lsls r0, r6, 24\n\
-        mov r10, r0\n\
-        ldr r1, [sp, 0x1C]\n\
-        adds r1, 0xA2\n\
-        mov r9, r1\n\
-        ldr r2, [sp, 0x18]\n\
-        lsls r2, 5\n\
-        mov r8, r2\n\
-        b _08021C5A\n\
-    _08021ADE:\n\
-        ldr r0, [sp, 0x20]\n\
-        adds r0, 0x20\n\
-        adds r0, r5\n\
-        ldrb r0, [r0]\n\
-        str r0, [sp, 0x18]\n\
-        lsls r3, r5, 1\n\
-        ldr r2, [sp, 0x20]\n\
-        adds r2, 0xC\n\
-        cmp r5, 0\n\
-        beq _08021B04\n\
-        adds r0, r2, r3\n\
-        subs r1, r5, 0x1\n\
-        lsls r1, 1\n\
-        adds r1, r2, r1\n\
-        ldrh r0, [r0]\n\
-        ldrh r1, [r1]\n\
-        cmp r0, r1\n\
-        beq _08021B04\n\
-        str r5, [sp, 0x1C]\n\
-    _08021B04:\n\
-        ldr r4, [sp, 0x24]\n\
-        ldr r1, [sp, 0x10]\n\
-        adds r0, r4, r1\n\
-        lsls r0, 1\n\
-        adds r0, r3, r0\n\
-        adds r0, r2, r0\n\
-        ldrh r1, [r0]\n\
-        ldr r0, =gStringVar4\n\
-        movs r2, 0x1\n\
-        movs r3, 0x4\n\
-        bl ConvertIntToDecimalStringN\n\
-        ldr r0, =gUnknown_082F43B4\n\
-        adds r0, r4, r0\n\
-        ldr r1, [r0]\n\
-        ldr r0, =gStringVar4\n\
-        bl StringAppend\n\
-        ldr r4, [sp, 0x14]\n\
-        subs r4, 0x4\n\
-        lsls r2, r6, 24\n\
-        mov r10, r2\n\
-        ldr r3, [sp, 0x1C]\n\
-        adds r3, 0xA2\n\
-        mov r9, r3\n\
-        ldr r0, [sp, 0x18]\n\
-        lsls r0, 5\n\
-        mov r8, r0\n\
-        b _08021C5A\n\
-        .pool\n\
-    _08021B48:\n\
-        ldr r1, [sp, 0x20]\n\
-        adds r0, r1, r5\n\
-        adds r0, 0x28\n\
-        ldrb r0, [r0]\n\
-        str r0, [sp, 0x18]\n\
-        lsls r3, r5, 1\n\
-        adds r2, r1, 0\n\
-        adds r2, 0xC\n\
-        cmp r5, 0\n\
-        beq _08021B72\n\
-        adds r0, r3, 0\n\
-        adds r0, 0xA\n\
-        adds r0, r2, r0\n\
-        adds r1, r3, 0\n\
-        adds r1, 0x8\n\
-        adds r1, r2, r1\n\
-        ldrh r0, [r0]\n\
-        ldrh r1, [r1]\n\
-        cmp r0, r1\n\
-        beq _08021B72\n\
-        str r5, [sp, 0x1C]\n\
-    _08021B72:\n\
-        ldr r0, [sp, 0x24]\n\
-        ldr r1, [sp, 0x10]\n\
-        adds r4, r0, r1\n\
-        lsls r4, 1\n\
-        adds r4, r3, r4\n\
-        adds r4, r2, r4\n\
-        ldrh r1, [r4]\n\
-        lsrs r1, 4\n\
-        ldr r0, =gStringVar1\n\
-        movs r2, 0x1\n\
-        movs r3, 0x3\n\
-        bl ConvertIntToDecimalStringN\n\
-        movs r7, 0\n\
-        ldrb r0, [r4]\n\
-        movs r3, 0xF\n\
-        ands r3, r0\n\
-        movs r2, 0\n\
-        ldr r4, [sp, 0x10]\n\
-        lsls r4, 2\n\
-        str r4, [sp, 0x28]\n\
-        ldr r4, [sp, 0x14]\n\
-        subs r4, 0x4\n\
-        lsls r0, r6, 24\n\
-        mov r10, r0\n\
-        ldr r1, [sp, 0x1C]\n\
-        adds r1, 0xA2\n\
-        mov r9, r1\n\
-        ldr r0, [sp, 0x18]\n\
-        lsls r0, 5\n\
-        mov r8, r0\n\
-        adds r6, 0xE\n\
-        adds r5, 0x1\n\
-        ldr r1, =gUnknown_082F334C\n\
-        mov r12, r1\n\
-    _08021BB8:\n\
-        movs r0, 0x3\n\
-        subs r1, r0, r2\n\
-        adds r0, r3, 0\n\
-        asrs r0, r1\n\
-        movs r1, 0x1\n\
-        ands r0, r1\n\
-        cmp r0, 0\n\
-        beq _08021BD0\n\
-        lsls r0, r2, 2\n\
-        add r0, r12\n\
-        ldr r0, [r0]\n\
-        adds r7, r0\n\
-    _08021BD0:\n\
-        adds r0, r2, 0x1\n\
-        lsls r0, 24\n\
-        lsrs r2, r0, 24\n\
-        cmp r2, 0x3\n\
-        bls _08021BB8\n\
-        adds r0, r7, 0\n\
-        ldr r1, =0x000f4240\n\
-        bl __udivsi3\n\
-        lsls r0, 24\n\
-        lsrs r3, r0, 24\n\
-        ldr r0, =gStringVar2\n\
-        adds r1, r3, 0\n\
-        movs r2, 0x2\n\
-        movs r3, 0x2\n\
-        bl ConvertIntToDecimalStringN\n\
-        ldr r0, =gUnknown_082F43B4\n\
-        ldr r2, [sp, 0x28]\n\
-        adds r0, r2, r0\n\
-        ldr r1, [r0]\n\
-        ldr r0, =gStringVar4\n\
-        bl StringExpandPlaceholders\n\
-        b _08021C5E\n\
-        .pool\n\
-    _08021C1C:\n\
-        str r5, [sp, 0x18]\n\
-        str r5, [sp, 0x1C]\n\
-        lsls r7, r5, 5\n\
-        ldr r3, [sp, 0xC]\n\
-        adds r0, r3, r7\n\
-        adds r0, 0xA4\n\
-        ldrb r2, [r0]\n\
-        cmp r2, 0x2B\n\
-        bls _08021C30\n\
-        movs r2, 0\n\
-    _08021C30:\n\
-        lsls r1, r2, 3\n\
-        subs r1, r2\n\
-        lsls r1, 2\n\
-        ldr r0, =gBerries\n\
-        adds r1, r0\n\
-        ldr r0, =gStringVar1\n\
-        bl StringCopy\n\
-        ldr r0, =gUnknown_082F43B4\n\
-        ldr r1, [r0, 0x8]\n\
-        ldr r0, =gStringVar4\n\
-        bl StringExpandPlaceholders\n\
-        ldr r4, [sp, 0x14]\n\
-        subs r4, 0x4\n\
-        lsls r0, r6, 24\n\
-        mov r10, r0\n\
-        movs r1, 0xA2\n\
-        adds r1, r5\n\
-        mov r9, r1\n\
-        mov r8, r7\n\
-    _08021C5A:\n\
-        adds r6, 0xE\n\
-        adds r5, 0x1\n\
-    _08021C5E:\n\
-        movs r0, 0x2\n\
-        ldr r1, =gStringVar4\n\
-        adds r2, r4, 0\n\
-        bl GetStringRightAlignXOffset\n\
-        adds r2, r0, 0\n\
-        ldr r3, [sp, 0xC]\n\
-        movs r4, 0xDD\n\
-        lsls r4, 1\n\
-        adds r0, r3, r4\n\
-        ldrb r0, [r0]\n\
-        lsls r2, 24\n\
-        lsrs r2, 24\n\
-        mov r1, r10\n\
-        lsrs r3, r1, 24\n\
-        ldr r1, =sBerryCrushTextColorTable\n\
-        str r1, [sp]\n\
-        movs r4, 0\n\
-        str r4, [sp, 0x4]\n\
-        ldr r1, =gStringVar4\n\
-        str r1, [sp, 0x8]\n\
-        movs r1, 0x2\n\
-        bl AddTextPrinterParameterized3\n\
-        ldr r3, [sp, 0x18]\n\
-        ldr r2, [sp, 0xC]\n\
-        ldrb r2, [r2, 0x8]\n\
-        cmp r3, r2\n\
-        bne _08021CC0\n\
-        ldr r0, =gStringVar3\n\
-        ldr r1, =gText_1DotBlueF700\n\
-        bl StringCopy\n\
-        b _08021CC8\n\
-        .pool\n\
-    _08021CC0:\n\
-        ldr r0, =gStringVar3\n\
-        ldr r1, =gText_1DotF700\n\
-        bl StringCopy\n\
-    _08021CC8:\n\
-        ldr r4, =gStringVar3\n\
-        mov r3, r9\n\
-        strb r3, [r4]\n\
-        mov r1, r8\n\
-        adds r1, 0x98\n\
-        ldr r0, [sp, 0xC]\n\
-        adds r1, r0, r1\n\
-        movs r0, 0\n\
-        bl DynamicPlaceholderTextUtil_SetPlaceholderPtr\n\
-        ldr r0, =gStringVar4\n\
-        adds r1, r4, 0\n\
-        bl DynamicPlaceholderTextUtil_ExpandPlaceholders\n\
-        ldr r1, [sp, 0xC]\n\
-        movs r2, 0xDD\n\
-        lsls r2, 1\n\
-        adds r0, r1, r2\n\
-        ldrb r0, [r0]\n\
-        mov r4, r10\n\
-        lsrs r3, r4, 24\n\
-        ldr r1, =sBerryCrushTextColorTable\n\
-        str r1, [sp]\n\
-        movs r1, 0\n\
-        str r1, [sp, 0x4]\n\
-        ldr r2, =gStringVar4\n\
-        str r2, [sp, 0x8]\n\
-        movs r1, 0x2\n\
-        movs r2, 0x4\n\
-        bl AddTextPrinterParameterized3\n\
-        lsls r0, r5, 24\n\
-        lsrs r5, r0, 24\n\
-        ldr r3, [sp, 0xC]\n\
-        ldrb r3, [r3, 0x9]\n\
-        cmp r5, r3\n\
-        bcs _08021D14\n\
-        b _08021A98\n\
-    _08021D14:\n\
-        add sp, 0x2C\n\
-        pop {r3-r5}\n\
-        mov r8, r3\n\
-        mov r9, r4\n\
-        mov r10, r5\n\
-        pop {r4-r7}\n\
-        pop {r0}\n\
-        bx r0\n\
-        .pool");
-}
-#endif
 
 void sub_8021D34(struct BerryCrushGame *r8)
 {
@@ -1919,7 +1510,7 @@ void sub_8021D34(struct BerryCrushGame *r8)
     AddTextPrinterParameterized3(r8->unk138.unk82, 2, r6, r7, sBerryCrushTextColorTable[0], 0, gText_TimesPerSec);
     for (; r10 < 8; ++r10)
         if (((u8)r8->unk16 >> (7 - r10)) & 1)
-            sp0C += *(r10 + gUnknown_082F334C); // It's accessed in a different way here for unknown reason
+            sp0C += *(r10 + sPressingSpeedConversionTable); // It's accessed in a different way here for unknown reason
     ConvertIntToDecimalStringN(gStringVar1, r8->unk16 >> 8, STR_CONV_MODE_RIGHT_ALIGN, 3);
     ConvertIntToDecimalStringN(gStringVar2, sp0C / 1000000, STR_CONV_MODE_LEADING_ZEROS, 2);
     StringExpandPlaceholders(gStringVar4, gText_XDotY3);
@@ -2000,110 +1591,106 @@ void sub_802222C(struct BerryCrushGame *r4)
     sub_8022600(r4);
 }
 
-void sub_8022250(u8 r4)
+static void Task_ShowBerryCrushRankings(u8 taskId)
 {
-    u8 r9 = 0, r2, r7, r10;
-    u32 sp0C = 0;
-    s16 *r6 = gTasks[r4].data;
-    const u8 *r10_; // turn r5/sl register swap into r8/sl
+    u8 i = 0, j, xPos, yPos;
+    u32 score = 0;
+    s16 *data = gTasks[taskId].data;
+    u8 *str;
     
-    switch (r6[0])
+    switch (data[0])
     {
     case 0:
-        r6[1] = AddWindow(&gUnknown_082F32EC);
-        PutWindowTilemap((u8)r6[1]);
-        FillWindowPixelBuffer((u8)r6[1], PIXEL_FILL(0));
-        LoadUserWindowBorderGfx_((u8)r6[1], 541, 208);
-        DrawStdFrameWithCustomTileAndPalette((u8)r6[1], 0, 541, 13);
+        data[1] = AddWindow(&sWindowTemplate_BerryCrushRankings);
+        PutWindowTilemap(data[1]);
+        FillWindowPixelBuffer(data[1], PIXEL_FILL(0));
+        LoadUserWindowBorderGfx_(data[1], 541, 208);
+        DrawStdFrameWithCustomTileAndPalette(data[1], 0, 541, 13);
         break;
     case 1:
-        r10_ = gText_BerryCrush2;
-        ++r10_; --r10_; // swap sb/sl
-    #ifndef NONMATCHING
-        asm("":::"r8"); // turn r8/sl register swap into sb/sl
-    #endif
-        r7 = 96 - GetStringWidth(1, r10_, -1) / 2u;
+        xPos = 96 - GetStringWidth(1, gText_BerryCrush2, -1) / 2u;
         AddTextPrinterParameterized3(
-            (u8)r6[1],
+            data[1],
             1,
-            r7,
+            xPos,
             1,
             sBerryCrushTextColorTable[3],
             0,
-            r10_
+            gText_BerryCrush2
         );
-        r10_ = gText_PressingSpeedRankings;
-        r7 = 96 - GetStringWidth(1, r10_, -1) / 2u;
+        xPos = 96 - GetStringWidth(1, gText_PressingSpeedRankings, -1) / 2u;
         AddTextPrinterParameterized3(
-            (u8)r6[1],
+            data[1],
             1,
-            r7,
+            xPos,
             17,
             sBerryCrushTextColorTable[3],
             0,
-            r10_
+            gText_PressingSpeedRankings
         );
-        r10 = 41;
-        for (; r9 < 4; ++r9)
+        yPos = 41;
+        for (i = 0; i < 4; ++i)
         {
-            ConvertIntToDecimalStringN(gStringVar1, r9 + 2, STR_CONV_MODE_LEFT_ALIGN, 1);
+            ConvertIntToDecimalStringN(gStringVar1, i + 2, STR_CONV_MODE_LEFT_ALIGN, 1);
             StringExpandPlaceholders(gStringVar4, gText_Var1Players);
             AddTextPrinterParameterized3(
-                (u8)r6[1],
+                data[1],
                 1,
                 0,
-                r10,
+                yPos,
                 sBerryCrushTextColorTable[0],
                 0,
                 gStringVar4
             );
-            r7 = 192 - (u8)GetStringWidth(1, gText_TimesPerSec, -1);
+            xPos = 192 - (u8)GetStringWidth(1, gText_TimesPerSec, -1);
             AddTextPrinterParameterized3(
-                (u8)r6[1],
+                data[1],
                 1,
-                r7,
-                r10,
+                xPos,
+                yPos,
                 sBerryCrushTextColorTable[0],
                 0,
                 gText_TimesPerSec
             );
-            for (r2 = 0; r2 < 8; ++r2)
-                if (((u8)r6[r9 + 2] >> (7 - r2)) & 1)
-                    sp0C += gUnknown_082F334C[r2];
-            ConvertIntToDecimalStringN(gStringVar1, (u16)r6[r9 + 2] >> 8, STR_CONV_MODE_RIGHT_ALIGN, 3);
-            ConvertIntToDecimalStringN(gStringVar2, sp0C / 1000000, STR_CONV_MODE_LEADING_ZEROS, 2);
+            for (j = 0; j < 8; ++j)
+            {
+                if (((data[i + 2] & 0xFF) >> (7 - j)) & 1)
+                    score += sPressingSpeedConversionTable[j];
+            }
+            ConvertIntToDecimalStringN(gStringVar1, (u16)data[i + 2] >> 8, STR_CONV_MODE_RIGHT_ALIGN, 3);
+            ConvertIntToDecimalStringN(gStringVar2, score / 1000000, STR_CONV_MODE_LEADING_ZEROS, 2);
             StringExpandPlaceholders(gStringVar4, gText_XDotY3);
-            r7 -= GetStringWidth(1, gStringVar4, -1);
+            xPos -= GetStringWidth(1, gStringVar4, -1);
             AddTextPrinterParameterized3(
-                (u8)r6[1],
+                data[1],
                 1,
-                r7,
-                r10,
+                xPos,
+                yPos,
                 sBerryCrushTextColorTable[0],
                 0,
                 gStringVar4
             );
-            r10 += 16;
-            sp0C = 0;
+            yPos += 16;
+            score = 0;
         }
-        CopyWindowToVram((u8)r6[1], 3);
+        CopyWindowToVram(data[1], 3);
         break;
     case 2:
-        if (gMain.newKeys & (A_BUTTON | B_BUTTON))
+        if (JOY_NEW(A_BUTTON | B_BUTTON))
             break;
         else
             return;
     case 3:
-        ClearStdWindowAndFrameToTransparent((u8)r6[1], 1);
-        ClearWindowTilemap((u8)r6[1]);
-        RemoveWindow((u8)r6[1]);
-        DestroyTask(r4);
+        ClearStdWindowAndFrameToTransparent(data[1], 1);
+        ClearWindowTilemap(data[1]);
+        RemoveWindow(data[1]);
+        DestroyTask(taskId);
         EnableBothScriptContexts();
         ScriptContext2_Disable();
-        r6[0] = 0;
+        data[0] = 0;
         return;
     }
-    ++r6[0];
+    ++data[0];
 }
 
 void ShowBerryCrushRankings(void)
@@ -2111,7 +1698,7 @@ void ShowBerryCrushRankings(void)
     u8 taskId;
 
     ScriptContext2_Enable();
-    taskId = CreateTask(sub_8022250, 0);
+    taskId = CreateTask(Task_ShowBerryCrushRankings, 0);
     gTasks[taskId].data[2] = gSaveBlock2Ptr->berryCrush.berryCrushResults[0];
     gTasks[taskId].data[3] = gSaveBlock2Ptr->berryCrush.berryCrushResults[1];
     gTasks[taskId].data[4] = gSaveBlock2Ptr->berryCrush.berryCrushResults[2];
@@ -2121,18 +1708,18 @@ void ShowBerryCrushRankings(void)
 void sub_8022524(struct BerryCrushGame_138 *r4, u16 r1)
 {
     sub_8021944(r4, r1);
-    sub_8035044(0, r4->unk4);
-    sub_8035044(1, r4->unk6);
-    sub_8035044(2, r4->unk8);
+    DigitObjUtil_PrintNumOn(0, r4->unk4);
+    DigitObjUtil_PrintNumOn(1, r4->unk6);
+    DigitObjUtil_PrintNumOn(2, r4->unk8);
 }
 
 void sub_8022554(struct BerryCrushGame_138 *r0)
 {
     r0->unk78[0]->invisible = TRUE;
     r0->unk78[1]->invisible = TRUE;
-    sub_803547C(2, 1);
-    sub_803547C(1, 1);
-    sub_803547C(0, 1);
+    DigitObjUtil_HideOrShow(2, 1);
+    DigitObjUtil_HideOrShow(1, 1);
+    DigitObjUtil_HideOrShow(0, 1);
 }
 
 void sub_8022588(struct BerryCrushGame *r5)
@@ -2275,9 +1862,9 @@ void sub_8022730(struct BerryCrushGame *r6)
         r6->unk138.unk78[r5]->invisible = FALSE;
         r6->unk138.unk78[r5]->animPaused = FALSE;
     }
-    sub_8034D14(0, 0, &gUnknown_082F4384[0]);
-    sub_8034D14(1, 0, &gUnknown_082F4384[1]);
-    sub_8034D14(2, 0, &gUnknown_082F4384[2]);
+    DigitObjUtil_CreatePrinter(0, 0, &gUnknown_082F4384[0]);
+    DigitObjUtil_CreatePrinter(1, 0, &gUnknown_082F4384[1]);
+    DigitObjUtil_CreatePrinter(2, 0, &gUnknown_082F4384[2]);
     if (r6->unk12 == 1)
         sub_8022554(&r6->unk138);
 }
@@ -2295,9 +1882,9 @@ void sub_8022960(struct BerryCrushGame *r5)
     FreeSpritePaletteByTag(1);
     for (; r4 < ARRAY_COUNT(r5->unk138.unk78); ++r4)
         DestroySprite(r5->unk138.unk78[r4]);
-    sub_80353DC(2);
-    sub_80353DC(1);
-    sub_80353DC(0);
+    DigitObjUtil_DeletePrinter(2);
+    DigitObjUtil_DeletePrinter(1);
+    DigitObjUtil_DeletePrinter(0);
     for (r4 = 0; r4 < ARRAY_COUNT(r5->unk138.unk4C); ++r4)
         DestroySprite(r5->unk138.unk4C[r4]);
     for (r4 = 0; r4 < r5->unk9; ++r4)
@@ -2363,12 +1950,12 @@ void sub_8022B28(struct Sprite *sprite)
     r7[2] = 32;
     r7[7] = 168;
     r4 = sprite->pos2.x * 128;
-    r5 = sub_81515D4(7, (168 - sprite->pos1.y) << 7, (r2 + 32) >> 1);
+    r5 = MathUtil_Div16Shift(7, (168 - sprite->pos1.y) << 7, (r2 + 32) >> 1);
     sprite->data[0] = sprite->pos1.x << 7;
-    r7[3] = sub_81515D4(7, r4, r5);
-    r2 = sub_8151550(7, r5, 85);
+    r7[3] = MathUtil_Div16Shift(7, r4, r5);
+    r2 = MathUtil_Mul16Shift(7, r5, 85);
     r7[4] = r8;
-    r7[5] = sub_81515D4(7, 0x3F80, r2);
+    r7[5] = MathUtil_Div16Shift(7, Q_8_8(63.5), r2);
     r7[6] = sprite->pos2.x / 4;
     r7[7] |= 0x8000;
     sprite->pos2.y = r8;
@@ -2399,39 +1986,42 @@ void sub_8022BEC(u16 r5, u8 r4, u8 *r7)
     }
 }
 
-static u32 sub_8022C58(struct BerryCrushGame *r6, u8 *r1)
+static u32 BerryCrushCommand_BeginNormalPaletteFade(struct BerryCrushGame *game, u8 *params)
 {
-    u16 r4;
-    u32 r0;
-#ifndef NONMATCHING // fake match, nobody can write such code
-    register u32 r2 asm("r2");
-    register u32 r3 asm("r3");
+    // params points to packed values:
+    // bytes 0-3: selectedPals (bitfield)
+    // byte 4: delay
+    // byte 5: startY
+    // byte 6: stopY
+    // bytes 7-8: fade color
+    // byte 9: if TRUE, communicate on fade complete
 
-    r2 = r1[0];
-    r3 = r1[1];
-    r3 <<= 8;
-    r2 |= r3;
-    r3 = r1[2];
-    r3 <<= 16;
-    r2 |= r3;
-    r3 = r1[3];
-    r3 <<= 24;
-    r0 = r2;
-    r0 |= r3;
-#else
-    u32 r2;
+    u16 color;
+    u32 selectedPals[2];
 
-    r0 = T1_READ_32(r1);
-#endif
-    r2 = r1[9];
-    r1[0] = r2;
-    r4 = r1[8] << 8;
-    r2 = r1[7];
-    r4 |= r2;
+    selectedPals[0] = (u32)params[0];
+    selectedPals[1] = (u32)params[1];
+    selectedPals[1] <<= 8;
+
+    selectedPals[0] |= selectedPals[1];
+    selectedPals[1] = (u32)params[2];
+    selectedPals[1] <<= 16;
+
+    selectedPals[0] |= selectedPals[1];
+    selectedPals[1] = (u32)params[3];
+    selectedPals[1] <<= 24;
+
+    selectedPals[0] |= selectedPals[1];
+    params[0] = params[9];
+
+    color = params[8];
+    color <<= 8;
+    color |= params[7];
+
     gPaletteFade.bufferTransferDisabled = FALSE;
-    BeginNormalPaletteFade(r0, r1[4], r1[5], r1[6], r4);
+    BeginNormalPaletteFade(selectedPals[0], params[4], params[5], params[6], color);
     UpdatePaletteFade();
-    r6->unkE = 2;
+    game->unkE = 2;
     return 0;
 }
 
@@ -2448,7 +2038,7 @@ static u32 sub_8022CB0(struct BerryCrushGame *r4, u8 *r5)
             r4->unkC = 3;
         return 0;
     case 1:
-        sub_8010434();
+        Rfu_SetLinkStandbyCallback();
         ++r4->unkC;
         return 0;
     case 2:
@@ -2531,12 +2121,12 @@ static u32 sub_8022E5C(struct BerryCrushGame *r4, __attribute__((unused)) u8 *r1
     switch (r4->unkC)
     {
     case 0:
-        sub_8010434();
+        Rfu_SetLinkStandbyCallback();
         break;
     case 1:
         if (IsLinkTaskFinished())
         {
-            PlayNewMapMusic(MUS_RG_SLOT);
+            PlayNewMapMusic(MUS_RG_GAME_CORNER);
             sub_8022BEC(7, 1, NULL);
             r4->unk12 = 3;
             r4->unkC = 0;
@@ -2588,7 +2178,7 @@ static u32 sub_8022F1C(struct BerryCrushGame *r5, u8 *r2)
         sub_8022BEC(3, 1, NULL);
         return 0;
     case 1:
-        sub_8010434();
+        Rfu_SetLinkStandbyCallback();
         break;
     case 2:
         if (!IsLinkTaskFinished())
@@ -2615,7 +2205,7 @@ static u32 sub_8022F1C(struct BerryCrushGame *r5, u8 *r2)
         }
         r5->unk10 = 0;
         ResetBlockReceivedFlags();
-        r5->unk20 = sub_81515FC(r5->unk18 << 8, 0x2000);
+        r5->unk20 = MathUtil_Div32(Q_24_8(r5->unk18), Q_24_8(32));
         break;
     case 5:
         ClearDialogWindowAndFrame(0, 1);
@@ -2634,7 +2224,7 @@ static u32 sub_8023070(struct BerryCrushGame *r4,  __attribute__((unused)) u8 *r
     {
     case 0:
         sub_80214A8(r4, &r4->unk138);
-        sub_8010434();
+        Rfu_SetLinkStandbyCallback();
         break;
     case 1:
         if (!IsLinkTaskFinished())
@@ -2647,14 +2237,14 @@ static u32 sub_8023070(struct BerryCrushGame *r4,  __attribute__((unused)) u8 *r
     case 2:
         r4->unk138.unk38[r4->unk138.unk0]->callback = sub_8021608;
         r4->unk138.unk38[r4->unk138.unk0]->affineAnimPaused = FALSE;
-        PlaySE(SE_NAGERU);
+        PlaySE(SE_BALL_THROW);
         break;
     case 3:
         if (r4->unk138.unk38[r4->unk138.unk0]->callback == sub_8021608)
             return 0;
         r4->unk138.unk38[r4->unk138.unk0] = NULL;
         ++r4->unk138.unk0;
-        sub_8010434();
+        Rfu_SetLinkStandbyCallback();
         break;
     case 4:
         if (!IsLinkTaskFinished())
@@ -2668,12 +2258,12 @@ static u32 sub_8023070(struct BerryCrushGame *r4,  __attribute__((unused)) u8 *r
         break;
     case 5:
         sub_80216A8(r4, &r4->unk138);
-        sub_8010434();
+        Rfu_SetLinkStandbyCallback();
         break;
     case 6:
         if (!IsLinkTaskFinished())
             return 0;
-        PlaySE(SE_RU_HYUU);
+        PlaySE(SE_FALL);
         sub_8022BEC(11, 1, NULL);
         r4->unk12 = 5;
         r4->unkC = 0;
@@ -2695,7 +2285,7 @@ static u32 sub_80231B8(struct BerryCrushGame *r4,  __attribute__((unused)) u8 *r
         r4->unk138.unk1 = 4;
         r4->unk138.unk0 = 0;
         r4->unk138.unk2 = gUnknown_082F326C[r4->unk138.unk1][0];
-        PlaySE(SE_W070);
+        PlaySE(SE_M_STRENGTH);
         break;
     case 1:
         r4->unk2C = gUnknown_082F326C[r4->unk138.unk1][r4->unk138.unk0];
@@ -2716,7 +2306,7 @@ static u32 sub_80231B8(struct BerryCrushGame *r4,  __attribute__((unused)) u8 *r
         SetGpuReg(REG_OFFSET_BG0VOFS, 0);
         SetGpuReg(REG_OFFSET_BG2VOFS, 0);
         SetGpuReg(REG_OFFSET_BG3VOFS, 0);
-        sub_8010434();
+        Rfu_SetLinkStandbyCallback();
         break;
     case 3:
         if (!IsLinkTaskFinished())
@@ -2737,14 +2327,14 @@ static u32 sub_80232EC(struct BerryCrushGame *r4,  __attribute__((unused)) u8 *r
     case 1:
         if (!IsLinkTaskFinished())
             return 0;
-        sub_802EB24(0x1000, 0x1000, 120, 80, 0);
+        StartMinigameCountdown(0x1000, 0x1000, 120, 80, 0);
         break;
     case 2:
-        if (sub_802EB84())
+        if (IsMinigameCountdownRunning())
             return 0;
         // fallthrough
     case 0:
-        sub_8010434();
+        Rfu_SetLinkStandbyCallback();
         break;
     case 3:
         if (!IsLinkTaskFinished())
@@ -2778,7 +2368,7 @@ void sub_802339C(struct BerryCrushGame *r4)
     for (r7 = 0; r7 < r4->unk9; ++r7)
     {
         r2 = gRecvCmds[r7];
-        if ((r2[0] & 0xFF00) == 0x2F00
+        if ((r2[0] & 0xFF00) == RFUCMD_SEND_PACKET
          && r2[1] == 2)
         {
             if ((u8)r2[2] & 4)
@@ -2811,7 +2401,7 @@ void sub_802339C(struct BerryCrushGame *r4)
             }
         }
     }
-    if (r8 > 1)
+    if (r8 >= 2)
     {
         for (r7 = 0; r7 < r4->unk9; ++r7)
         {
@@ -2832,9 +2422,9 @@ void sub_802339C(struct BerryCrushGame *r4)
         r2_ = r4->unk1A;
         if (r0 - r2_ > 0)
         {
-            r2_ <<= 8;
-            r2_ = sub_81515FC(r2_, r4->unk20);
-            r2_ >>= 8;
+            r2_ = Q_24_8(r2_);
+            r2_ = MathUtil_Div32(r2_, r4->unk20);
+            r2_ = Q_24_8_TO_INT(r2_);
             r4->unk24 = r2_;
         }
         else
@@ -2919,9 +2509,9 @@ void sub_8023558(struct BerryCrushGame *r3)
 
 void sub_80236B8(struct BerryCrushGame *r5)
 {
-    if (gMain.newKeys & A_BUTTON)
+    if (JOY_NEW(A_BUTTON))
         r5->unk5C.unk02_2 = 1;
-    if (gMain.heldKeys & A_BUTTON)
+    if (JOY_HELD(A_BUTTON))
     {
         if (r5->unk68.as_four_players.others[r5->unk8].unk4.as_hwords[5] < r5->unk28)
             ++r5->unk68.as_four_players.others[r5->unk8].unk4.as_hwords[5];
@@ -2980,7 +2570,7 @@ void sub_80236B8(struct BerryCrushGame *r5)
     r5->unk5C.unk02_1 = r5->unk25_4;
     r5->unk5C.unk0A = r5->unk25_5;
     memcpy(r5->unk40.unk2, &r5->unk5C, sizeof(r5->unk40.unk2));
-    sub_800FE50(r5->unk40.unk2);
+    Rfu_SendPacket(r5->unk40.unk2);
 }
 
 void sub_802385C(struct BerryCrushGame *r5)
@@ -3001,7 +2591,8 @@ void sub_802385C(struct BerryCrushGame *r5)
     for (r4 = 0; r4 < r5->unk9; ++r4)
         r5->unk68.as_four_players.others[r4].unk4.as_2d_bytes[1][5] = 0;
 #endif
-    if ((gRecvCmds[0][0] & 0xFF00) != 0x2F00
+
+    if ((gRecvCmds[0][0] & 0xFF00) != RFUCMD_SEND_PACKET
      || gRecvCmds[0][1] != 2)
     {
         r5->unk25_2 = 0;
@@ -3088,7 +2679,7 @@ static u32 sub_8023A30(struct BerryCrushGame *r4, __attribute__((unused)) u8 *r1
     {
     case 0:
         r4->unk12 = 8;
-        PlaySE(SE_W070);
+        PlaySE(SE_M_STRENGTH);
         BlendPalettes(0xFFFFFFFF, 8, RGB(31, 31, 0));
         r4->unk138.unk0 = 2;
         break;
@@ -3124,7 +2715,7 @@ static u32 sub_8023A30(struct BerryCrushGame *r4, __attribute__((unused)) u8 *r1
     case 4:
         if (!sub_80218D4(r4, &r4->unk138))
             return 0;
-        sub_8010434();
+        Rfu_SetLinkStandbyCallback();
         r4->unk10 = 0;
         break;
     case 5:
@@ -3145,7 +2736,7 @@ static u32 sub_8023BC0(struct BerryCrushGame *r5, u8 *r6)
     {
     case 0:
         r5->unk12 = 9;
-        PlaySE(SE_HAZURE);
+        PlaySE(SE_FAILURE);
         BlendPalettes(0xFFFFFFFF, 8, RGB(31, 0, 0));
         r5->unk138.unk0 = 4;
         break;
@@ -3158,7 +2749,7 @@ static u32 sub_8023BC0(struct BerryCrushGame *r5, u8 *r6)
     case 2:
         if (!sub_80218D4(r5, &r5->unk138))
             return 0;
-        sub_8010434();
+        Rfu_SetLinkStandbyCallback();
         r5->unk10 = 0;
         SetGpuReg(REG_OFFSET_BG0VOFS, 0);
         SetGpuReg(REG_OFFSET_BG2VOFS, 0);
@@ -3221,14 +2812,14 @@ static u32 sub_8023CAC(struct BerryCrushGame *r7, __attribute__((unused)) u8 *r1
         );
         r7->unk68.as_four_players.unk00.unk04 = r7->unk28;
         r7->unk68.as_four_players.unk00.unk06 = r7->unk18 / (r7->unk28 / 60);
-        r2 = sub_8151574(r7->unk30 << 8, 0x3200);
-        r2 = sub_81515FC(r2, r7->unk32 << 8) + 0x3200;
-        r2 >>= 8;
+        r2 = MathUtil_Mul32(Q_24_8(r7->unk30), Q_24_8(50));
+        r2 = MathUtil_Div32(r2, Q_24_8(r7->unk32)) + Q_24_8(50);
+        r2 = Q_24_8_TO_INT(r2);
         r7->unk68.as_four_players.unk00.unk08 = r2 & 0x7F;
-        r2 <<= 8;
-        r2 = sub_81515FC(r2, 0x6400);
-        r4 = (r7->unk1C * r7->unk9) << 8;
-        r4 = sub_8151574(r4, r2);
+        r2 = Q_24_8(r2);
+        r2 = MathUtil_Div32(r2, Q_24_8(100));
+        r4 = Q_24_8(r7->unk1C * r7->unk9);
+        r4 = MathUtil_Mul32(r4, r2);
         r7->unk68.as_four_players.unk00.unk00 = r4 >> 8;
         r7->unk68.as_five_players.unk1C[0].unk4.as_2d_bytes[0][7] = Random() % 3;
         for (r6 = 0, r8 = 0; r8 < r7->unk9; ++r8)
@@ -3243,11 +2834,11 @@ static u32 sub_8023CAC(struct BerryCrushGame *r7, __attribute__((unused)) u8 *r1
                 if (r7->unk68.as_four_players.others[r8].unk4.as_hwords[3] != 0)
                 {
                     r2 = r7->unk68.as_four_players.others[r8].unk4.as_hwords[2];
-                    r2 <<= 8;
-                    r2 = sub_8151574(r2, 0x6400);
+                    r2 = Q_24_8(r2);
+                    r2 = MathUtil_Mul32(r2, Q_24_8(100));
                     r4 = r7->unk68.as_four_players.others[r8].unk4.as_hwords[3];
-                    r4 <<= 8;
-                    r4 = sub_81515FC(r2, r4);
+                    r4 = Q_24_8(r4);
+                    r4 = MathUtil_Div32(r2, r4);
                 }
                 else
                 {
@@ -3258,11 +2849,11 @@ static u32 sub_8023CAC(struct BerryCrushGame *r7, __attribute__((unused)) u8 *r1
                 if (r7->unk68.as_four_players.others[r8].unk4.as_hwords[3] != 0)
                 {
                     r2 = r7->unk68.as_four_players.others[r8].unk4.as_hwords[4];
-                    r2 <<= 8;
-                    r2 = sub_8151574(r2, 0x6400);
+                    r2 = Q_24_8(r2);
+                    r2 = MathUtil_Mul32(r2, Q_24_8(100));
                     r4 = r7->unk68.as_four_players.others[r8].unk4.as_hwords[3];
-                    r4 <<= 8;
-                    r4 = sub_81515FC(r2, r4);
+                    r4 = Q_24_8(r4);
+                    r4 = MathUtil_Div32(r2, r4);
                 }
                 else
                 {
@@ -3281,11 +2872,11 @@ static u32 sub_8023CAC(struct BerryCrushGame *r7, __attribute__((unused)) u8 *r1
                 else
                 {
                     r2 = r7->unk68.as_four_players.others[r8].unk4.as_hwords[5];
-                    r2 <<= 8;
-                    r2 = sub_8151574(r2, 0x6400);
+                    r2 = Q_24_8(r2);
+                    r2 = MathUtil_Mul32(r2, Q_24_8(100));
                     r4 = r7->unk28;
-                    r4 <<= 8;
-                    r4 = sub_81515FC(r2, r4);
+                    r4 = Q_24_8(r4);
+                    r4 = MathUtil_Div32(r2, r4);
                 }
                 break;
             }
@@ -3387,7 +2978,7 @@ static u32 sub_8024048(struct BerryCrushGame *r5, u8 *r6)
             --r5->unk138.unk0;
             return 0;
         }
-        if (!(gMain.newKeys & A_BUTTON))
+        if (!(JOY_NEW(A_BUTTON)))
             return 0;
         PlaySE(SE_SELECT);
         sub_802222C(r5);
@@ -3426,7 +3017,7 @@ static u32 sub_8024134(struct BerryCrushGame *r5, u8 *r4)
         r5->unkC = 0;
         return 0;
     case 1:
-        sub_8010434();
+        Rfu_SetLinkStandbyCallback();
         break;
     case 2:
         if (!IsLinkTaskFinished())
@@ -3434,10 +3025,10 @@ static u32 sub_8024134(struct BerryCrushGame *r5, u8 *r4)
         DrawDialogueFrame(0, 0);
         AddTextPrinterParameterized2(0, 1, gText_SavingDontTurnOffPower, 0, 0, 2, 1, 3);
         CopyWindowToVram(0, 3);
-        CreateTask(sub_8153688, 0);
+        CreateTask(Task_LinkSave, 0);
         break;
     case 3:
-        if (FuncIsActiveTask(sub_8153688))
+        if (FuncIsActiveTask(Task_LinkSave))
             return 0;
         break;
     case 4:
@@ -3505,7 +3096,7 @@ static u32 sub_80242E0(struct BerryCrushGame *r4, __attribute__((unused)) u8 *r1
     switch (r4->unkC)
     {
     case 0:
-        sub_8010434();
+        Rfu_SetLinkStandbyCallback();
         break;
     case 1:
         if (!IsLinkTaskFinished())
@@ -3605,12 +3196,12 @@ static u32 sub_8024508(struct BerryCrushGame *r5, __attribute__((unused)) u8 *r1
     switch (r5->unkC)
     {
     case 0:
-        sub_8010434();
+        Rfu_SetLinkStandbyCallback();
         break;
     case 1:
         if (!IsLinkTaskFinished())
             return 0;
-        sub_800AC34();
+        SetCloseLinkCallback();
         break;
     case 2:
         if (gReceivedRemoteLinkPlayers != 0)
@@ -3630,6 +3221,11 @@ static u32 sub_8024568(__attribute__((unused)) struct BerryCrushGame *r0, __attr
     return 0;
 }
 
+#if MODERN
+// TODO remove this as soon as the code below is understood
+// add a UBFIX if required (code buggy?)
+__attribute__((optimize("no-aggressive-loop-optimizations")))
+#endif
 void sub_8024578(struct BerryCrushGame *r4)
 {
     u8 r5 = 0;
@@ -3671,73 +3267,25 @@ void sub_8024578(struct BerryCrushGame *r4)
     }
 }
 
-#ifdef NONMATCHING
-void sub_8024604(u8 *r0, u32 r1, s32 r2, u32 r3, u32 r5, u32 r6, u32 r4)
+static void BerryCrush_SetPaletteFadeParams(u8 *params, bool8 communicateAfter, u32 selectedPals, s8 delay, u8 startY, u8 targetY, u16 palette)
 {
-    u8 sp[8];
-    u8 *p;
-
-    1[(u32 *)sp] = r2;
-    0[(u16 *)sp] = r4;
-    p = &sp[4];
-    r0[0] = p[0];
-    r0[1] = p[1];
-    r0[2] = p[2];
-    r0[3] = p[3];
-    r0[4] = r3;
-    r0[5] = r5;
-    r0[6] = r6;
-    r0[7] = sp[0];
-    r0[8] = sp[1];
-    r0[9] = r1;
+    params[0] = ((u8 *)&selectedPals)[0];
+    params[1] = ((u8 *)&selectedPals)[1];
+    params[2] = ((u8 *)&selectedPals)[2];
+    params[3] = ((u8 *)&selectedPals)[3];
+    params[4] = delay;
+    params[5] = startY;
+    params[6] = targetY;
+    params[7] = ((u8 *)&palette)[0];
+    params[8] = ((u8 *)&palette)[1];
+    params[9] = communicateAfter;
 }
-#else
-NAKED
-void sub_8024604(u8 *r0, u32 r1, s32 r2, u32 r3, u32 r5, u32 r6, u32 r4)
-{
-    asm_unified("\n\
-        push {r4-r6,lr}\n\
-        sub sp, 0x8\n\
-        str r2, [sp, 0x4]\n\
-        ldr r5, [sp, 0x18]\n\
-        ldr r6, [sp, 0x1C]\n\
-        ldr r4, [sp, 0x20]\n\
-        mov r2, sp\n\
-        strh r4, [r2]\n\
-        add r4, sp, 0x4\n\
-        ldrb r2, [r4]\n\
-        strb r2, [r0]\n\
-        ldrb r2, [r4, 0x1]\n\
-        strb r2, [r0, 0x1]\n\
-        ldrb r2, [r4, 0x2]\n\
-        strb r2, [r0, 0x2]\n\
-        ldrb r2, [r4, 0x3]\n\
-        strb r2, [r0, 0x3]\n\
-        strb r3, [r0, 0x4]\n\
-        strb r5, [r0, 0x5]\n\
-        strb r6, [r0, 0x6]\n\
-        mov r2, sp\n\
-        ldrb r2, [r2]\n\
-        strb r2, [r0, 0x7]\n\
-        mov r2, sp\n\
-        ldrb r2, [r2, 0x1]\n\
-        strb r2, [r0, 0x8]\n\
-        strb r1, [r0, 0x9]\n\
-        add sp, 0x8\n\
-        pop {r4-r6}\n\
-        pop {r0}\n\
-        bx r0");
-}
-#endif
 
-void sub_8024644(u8 *r0, u32 r1, u32 r2, u32 r3, u32 r5)
+void sub_8024644(u8 *r0, u8 r1, u8 r2, u16 r3, u8 r5)
 {
-    u8 sp[4];
-
-    0[(u16 *)sp] = r3;
     r0[0] = r1;
     r0[1] = r2;
-    r0[2] = sp[0];
-    r0[3] = sp[1];
+    r0[2] = ((u8 *)&r3)[0];
+    r0[3] = ((u8 *)&r3)[1];
     r0[4] = r5;
 }
